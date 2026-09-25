@@ -299,7 +299,8 @@
       <input type="password" id="s-token" placeholder="github_pat_..." autocomplete="off">
     </div>
     <button class="btn primary" id="s-save">Conectar</button>
-    <p class="hint" id="s-err" style="color:var(--danger)"></p>
+    <p class="hint" id="s-err"></p>
+    <p class="muted" style="text-align:center;margin-top:10px">Caddie v2</p>
   </div>
 </div>
 
@@ -333,11 +334,14 @@ function b64encode(str){
 
 async function gh(path, opts){
   opts = opts||{};
+  const method = opts.method||"GET";
+  // rompe la cache de GitHub para no recibir 304 sin cuerpo
+  const bust = (method==="GET") ? (path.includes("?")?"&":"?")+"_="+Date.now() : "";
   const ctrl = new AbortController();
   const to = setTimeout(()=>ctrl.abort(), 15000);
   let res;
   try{
-    res = await fetch("https://api.github.com/repos/"+cfg.user+"/"+cfg.repo+path, {
+    res = await fetch("https://api.github.com/repos/"+cfg.user+"/"+cfg.repo+path+bust, {
       method: opts.method||"GET",
       cache: "no-store",
       headers: {
@@ -529,14 +533,18 @@ $("#s-save").addEventListener("click", async ()=>{
   const c = { user:$("#s-user").value.trim(), repo:$("#s-repo").value.trim(), token:$("#s-token").value.trim() };
   if(!c.user||!c.repo||!c.token){ $("#s-err").textContent="Rellena los tres campos."; return; }
   cfg = c;
-  $("#s-err").textContent="Comprobando…";
+  const err=$("#s-err"); err.style.color="var(--muted)";
   try{
+    err.textContent="Conectando con GitHub…";
+    console.log("[caddie] pidiendo config.ini…");
     await getConfigIni();               // valida token + repo + que existe config.ini
+    console.log("[caddie] config.ini OK");
+    err.style.color="var(--accent-deep)"; err.textContent="Conectado ✓";
     saveCfg(cfg);
     $("#setup").hidden=true;
     $("#app").hidden=false;
     prefill(); refreshSim();
-  }catch(e){ $("#s-err").textContent = errMsg(e); }
+  }catch(e){ console.log("[caddie] error:", e); err.style.color="var(--danger)"; err.textContent = errMsg(e); }
 });
 
 function prefill(){
