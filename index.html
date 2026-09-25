@@ -273,7 +273,10 @@
 <!-- SETUP -->
 <div class="overlay" id="setup" hidden>
   <div class="modal">
-    <h2>Conecta tu robot</h2>
+    <div style="display:flex;align-items:flex-start;gap:10px">
+      <h2 style="flex:1">Conecta tu robot</h2>
+      <button id="s-close" class="gear" hidden aria-label="Cerrar" style="flex:0 0 auto">✕</button>
+    </div>
     <p class="muted">Una sola vez. La app necesita una “llave” de GitHub para dar órdenes a tu robot. Se guarda solo en este móvil.</p>
     <ol class="steps">
       <li>Entra en <b>github.com</b> → tu foto → <b>Settings</b>.</li>
@@ -330,15 +333,27 @@ function b64encode(str){
 
 async function gh(path, opts){
   opts = opts||{};
-  const res = await fetch("https://api.github.com/repos/"+cfg.user+"/"+cfg.repo+path, {
-    method: opts.method||"GET",
-    headers: {
-      "Authorization":"Bearer "+cfg.token,
-      "Accept":"application/vnd.github+json",
-      "X-GitHub-Api-Version":"2022-11-28"
-    },
-    body: opts.body?JSON.stringify(opts.body):undefined
-  });
+  const ctrl = new AbortController();
+  const to = setTimeout(()=>ctrl.abort(), 15000);
+  let res;
+  try{
+    res = await fetch("https://api.github.com/repos/"+cfg.user+"/"+cfg.repo+path, {
+      method: opts.method||"GET",
+      cache: "no-store",
+      headers: {
+        "Authorization":"Bearer "+cfg.token,
+        "Accept":"application/vnd.github+json",
+        "X-GitHub-Api-Version":"2022-11-28"
+      },
+      body: opts.body?JSON.stringify(opts.body):undefined,
+      signal: ctrl.signal
+    });
+  }catch(err){
+    clearTimeout(to);
+    const e = new Error(err.name==="AbortError" ? "GitHub tardó demasiado. Reintenta." : "Sin conexión con GitHub.");
+    throw e;
+  }
+  clearTimeout(to);
   if(res.status===204) return {};
   const data = await res.json().catch(()=>({}));
   if(!res.ok){ const e = new Error(data.message||("Error "+res.status)); e.status=res.status; throw e; }
@@ -501,8 +516,15 @@ function errMsg(e){
   if(e.status===404) return "No encuentro el repositorio. Revisa usuario/repo en Ajustes.";
   return e.message||"Error";
 }
-function openSetup(){ $("#setup").hidden=false; if(cfg){ $("#s-user").value=cfg.user; $("#s-repo").value=cfg.repo; } }
+function openSetup(){
+  $("#setup").hidden=false;
+  $("#s-err").textContent="";
+  const connected = !!(cfg && cfg.token);
+  $("#s-close").hidden = !connected;   // solo se puede cerrar si ya está conectado
+  if(cfg){ $("#s-user").value=cfg.user; $("#s-repo").value=cfg.repo; }
+}
 $("#gearBtn").addEventListener("click", openSetup);
+$("#s-close").addEventListener("click", ()=>{ $("#setup").hidden=true; });
 $("#s-save").addEventListener("click", async ()=>{
   const c = { user:$("#s-user").value.trim(), repo:$("#s-repo").value.trim(), token:$("#s-token").value.trim() };
   if(!c.user||!c.repo||!c.token){ $("#s-err").textContent="Rellena los tres campos."; return; }
